@@ -1,0 +1,767 @@
+ALLOWED_WEBSITES = ['indeed.com', 'linkedin.com', 'monster.com']
+
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+
+    # Check if website scraping is allowed
+    if website and website not in ALLOWED_WEBSITES:
+        return jsonify({'error': f'Scraping from {website} is not allowed. Supported websites: {", ".join(ALLOWED_WEBSITES)}'})
+
+    # Preprocess query text using NLTK
+    query_tokens = word_tokenize(query.lower())
+    query_tokens = [t for t in query_tokens if t.isalpha() and t not in stop_words]
+    query_description = ' '.join(query_tokens)
+
+    # Convert query description to feature vector using TF-IDF
+    X_query = vectorizer.transform([query_description])
+
+    # Predict job location based on query description
+    predicted_location = model.predict(X_query)
+
+    # Scrape job data from Indeed.com based on query and location
+    if website == 'indeed.com' or not website:
+        job_data = scrape_jobs(query, location)
+
+        # Filter job data by company name
+        if company:
+            job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+        # Filter job data by job type
+        if job_type:
+            job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+        # Filter job data by salary range
+        if salary_min:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+
+        if salary_max:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+        # Sort job data by relevance to query
+        scores = []
+        for job in job_data:
+            X_job = vectorizer.transform([job['description']])
+            score = (X_query * X_job.T).toarray()[0][0]
+            scores.append(score)
+        job_data = [job for _, job in sorted(zip(scores, job_data), reverse=True)]
+
+    # Scrape job data from LinkedIn based on query and location
+    elif website == 'linkedin.com':
+        job_data = scrape_linkedin(query, location)
+
+        # Filter job data by company name
+        if company:
+            job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+        # Filter job data by job type
+        if job_type:
+            job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+        # Filter job data by salary range
+        if salary_min:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+
+        if salary_max:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+        # Sort job data by relevance to query
+        scores = []
+        for job in job_data:
+            X_job = vectorizer.transform([job['description']])
+            score = (X_query * X_job.T).toarray()[
+        scores.append(score)
+        job_data = [job for _, job in sorted(zip(scores, job_data), reverse=True)]
+
+    # Scrape job data from Monster.com based on query and location
+    elif website == 'monster.com':
+        job_data = scrape_monster(query, location)
+
+        # Filter job data by company name
+        if company:
+            job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+        # Filter job data by job type
+        if job_type:
+            job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+        # Filter job data by salary range
+        if salary_min:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+
+        if salary_max:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+        # Sort job data by relevance to query
+        scores = []
+        for job in job_data:
+            X_job = vectorizer.transform([job['description']])
+            score = (X_query * X_job.T).toarray()[0][0]
+            scores.append(score)
+        job_data = [job for _, job in sorted(zip(scores, job_data), reverse=True)]
+
+    # Return error message for unknown websites
+    else:
+        return jsonify({'error': f'Scraping from {website} is not supported. Supported websites: {", ".join(ALLOWED_WEBSITES)}'})
+
+    # Filter job data by salary range
+    if salary_min:
+        job_data = [job for job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+
+    if salary_max:
+        job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+    # Filter job data by company name
+    if company:
+        job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+    # Filter job data by job type
+    if job_type:
+        job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+    # Convert job data to JSON format
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results})
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    total_results = len(job_data)
+    total_pages = math.ceil(len(job_data) / size)
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results, 'total_results': total_results, 'total_pages': total_pages})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+def sort_jobs(job_data, sort_by):
+    if sort_by == 'title':
+        job_data = sorted(job_data, key=lambda k: k['title'])
+    elif sort_by == 'company':
+        job_data = sorted(job_data, key=lambda k: k['company'])
+    elif sort_by == 'location':
+        job_data = sorted(job_data, key=lambda k: k['location'])
+    elif sort_by == 'salary':
+        job_data = sorted(job_data, key=lambda k: k['salary'], reverse=True)
+    return job_data
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    total_results = len(job_data)
+    total_pages = math.ceil(len(job_data) / size)
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results, 'total_results': total_results, 'total_pages': total_pages})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filter')
+def filter_jobs(job_data, field, values):
+    return [job for job in job_data if job.get(field) in values]
+    # Filter job data by specified field and values
+    if filters:
+        filters = filters.split(',')
+        field = filters[0]
+        values = filters[1:]
+        job_data = filter_jobs(job_data, field, values)
+
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    total_results = len(job_data)
+    total_pages = math.ceil(len(job_data) / size)
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results, 'total_results': total_results, 'total_pages': total_pages})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filter')
+    suggest = request.args.get('suggest')
+def suggest_jobs(query):
+    # Perform natural language processing and return related queries
+    # TODO: Implement natural language processing logic
+    related_queries = []
+    return related_queries
+    # Suggest related job queries
+    related_queries = []
+    if suggest:
+        related_queries = suggest_jobs(query)
+
+    # Filter job data by specified field and values
+    if filters:
+        filters = filters.split(',')
+        field = filters[0]
+        values = filters[1:]
+        job_data = filter_jobs(job_data, field, values)
+
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    total_results = len(job_data)
+    total_pages = math.ceil(len(job_data) / size)
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results, 'total_results': total_results, 'total_pages': total_pages, 'related_queries': related_queries})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filter')
+    suggest = request.args.get('suggest')
+    stats = request.args.get('stats')
+def calculate_stats(job_data):
+    stats = {
+        'num_jobs': len(job_data),
+        'avg_salary': sum(job['salary'] for job in job_data if job.get('salary')) / len(job_data),
+        # TODO: Add more statistics as needed
+    }
+    return stats
+    # Calculate statistics on job data
+    job_stats = {}
+    if stats:
+        job_stats = calculate_stats(job_data)
+
+    # Filter job data by specified field and values
+    if filters:
+        filters = filters.split(',')
+        field = filters[0]
+        values = filters[1:]
+        job_data = filter_jobs(job_data, field, values)
+
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    total_results = len(job_data)
+    total_pages = math.ceil(len(job_data) / size)
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results, 'total_results': total_results, 'total_pages': total_pages, 'related_queries': related_queries, 'stats': job_stats})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+def sort_jobs(job_data, field):
+    if field == 'salary':
+        job_data = sorted(job_data, key=lambda x: x.get(field, 0), reverse=True)
+    else:
+        job_data = sorted(job_data, key=lambda x: x.get(field, '').lower())
+    return job_data
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results})
+@app.route('/jobs', methods=['GET'])
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filters')
+def filter_jobs(job_data, field, values):
+    filtered_data = []
+    for job in job_data:
+        if job.get(field) and job[field] in values:
+            filtered_data.append(job)
+    return filtered_data
+    # Filter job data by specified field and values
+    if filters:
+        filters = filters.split(',')
+        field = filters[0]
+        values = filters[1:]
+        job_data = filter_jobs(job_data, field, values)
+
+    # Sort job data by specified field
+    if sort_by:
+        job_data = sort_jobs(job_data, sort_by)
+
+    # Convert job data to JSON format
+    start = (page - 1) * size
+    end = start + size
+    job_data = job_data[start:end]
+    results = []
+    for job in job_data:
+        result = {
+            'title': job['title'],
+            'company': job['company'],
+            'location': job['location'],
+            'description_url': job['description_url'],
+            'description': job['description'],
+            'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+        }
+        if job.get('salary'):
+            result['salary'] = job['salary']
+        results.append(result)
+
+    return jsonify({'results': results})
+pip install Flask-JWT
+from flask_jwt import JWT, jwt_required, current_identity
+
+# Set the JWT_SECRET_KEY configuration option
+app.config['JWT_SECRET_KEY'] = 'super-secret'
+# Define a function to authenticate users based on their username and password
+def authenticate(username, password):
+    if username == 'admin' and password == 'password':
+        return {'id': 1, 'username': 'admin'}
+# Define a function to retrieve user information based on their ID
+def identity(payload):
+    user_id = payload['identity']
+    return {'id': user_id, 'username': 'admin'}
+# Instantiate a JWT object and add the necessary routes
+jwt = JWT(app, authenticate, identity)
+
+# Add a protected route that requires authentication
+@app.route('/protected')
+@jwt_required()
+def protected():
+    return jsonify({'user': current_identity}), 200
+import requests
+
+# Set the API endpoint
+url = 'http://localhost:5000/protected'
+
+# Set the Authorization header with the JWT token
+headers = {'Authorization': 'Bearer ' + jwt_token}
+
+# Make the request to the API
+response = requests.get(url, headers=headers)
+pip install Flask-Limiter
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
+
+# Set the rate limit configuration options
+app.config['RATELIMIT_ENABLED'] = True
+app.config['RATELIMIT_STORAGE_URL'] = 'redis://localhost:6379/0'
+app.config['RATELIMIT_STRATEGY'] = 'moving-window'
+app.config['RATELIMIT_HEADERS_ENABLED'] = True
+app.config['RATELIMIT_KEY_PREFIX'] = 'rate-limiter:'
+app.config['RATELIMIT_DEFAULT'] = '10/hour'
+# Instantiate a Limiter object and apply it to the search_jobs route
+limiter = Limiter(app, key_func=get_remote_address, default_limits=['10 per hour'])
+
+@app.route('/jobs', methods=['GET'])
+@limiter.limit('10 per hour')
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filters')
+@app.route('/jobs', methods=['GET'])
+@limiter.limit('10 per hour')
+def search_jobs():
+    # Retrieve query parameters from request URL
+    query = request.args.get('query')
+    location = request.args.get('location')
+    company = request.args.get('company')
+    job_type = request.args.get('job_type')
+    salary_min = request.args.get('salary_min')
+    salary_max = request.args.get('salary_max')
+    website = request.args.get('website')
+    page = request.args.get('page', default=1, type=int)  # default to page 1 if not provided
+    size = request.args.get('size', default=10, type=int)  # default to 10 results per page if not provided
+    sort_by = request.args.get('sort_by')
+    filters = request.args.get('filters')
+
+    # Check if website scraping is allowed
+    if website and website not in allowed_websites:
+        return jsonify({'error': f'Scraping from {website} is not allowed.'})
+
+    # Preprocess query text using NLTK
+    query_tokens = word_tokenize(query.lower())
+    query_tokens = [t for t in query_tokens if t.isalpha() and t not in stop_words]
+    query_description = ' '.join(query_tokens)
+
+    # Convert query description to feature vector using TF-IDF
+    X_query = vectorizer.transform([query_description])
+
+    # Predict job location based on query description
+    predicted_location = model.predict(X_query)
+
+    # Scrape job data from Indeed.com based on query and location
+    if website == 'indeed.com' or not website:
+        job_data = scrape_jobs(query, location)
+
+        # Filter job data by company name
+        if company:
+            job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+        # Filter job data by job type
+        if job_type:
+            job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+        # Filter job data by salary range
+        if salary_min:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+        if salary_max:
+            job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+        # Sort job data by relevance to query or by specified sort key
+        if sort_by:
+            job_data = sorted(job_data, key=lambda job: job[sort_by], reverse=True)
+        else:
+            scores = []
+            for job in job_data:
+                X_job = vectorizer.transform([job['description']])
+                score = (X_query * X_job.T).toarray()[0][0]
+                scores.append(score)
+            job_data = [job for _, job in sorted(zip(scores, job_data), reverse=True)]
+
+    # Scrape job data from LinkedIn based on query and location
+    elif website == 'linkedin.com':
+        job_data = scrape_linkedin(query, location)
+
+        # Filter job data by company name
+        if company:
+            job_data = [job for job in job_data if company.lower() in job['company'].lower()]
+
+        # Filter job data by job type
+        if job_type:
+            job_data = [job for job in job_data if job_type.lower() in job['title'].lower()]
+
+        # Filter job data by salary range
+        if salary_min:
+            job_data = [job for
+job in job_data if job.get('salary') and job['salary'] >= float(salary_min)]
+
+    if salary_max:
+        job_data = [job for job in job_data if job.get('salary') and job['salary'] <= float(salary_max)]
+
+    # Sort job data by relevance to query or by specified sort key
+    if sort_by:
+        job_data = sorted(job_data, key=lambda job: job[sort_by], reverse=True)
+    else:
+        scores = []
+        for job in job_data:
+            X_job = vectorizer.transform([job['description']])
+            score = (X_query * X_job.T).toarray()[0][0]
+            scores.append(score)
+        job_data = [job for _, job in sorted(zip(scores, job_data), reverse=True)]
+
+# Apply filters if specified
+if filters:
+    for filter in filters.split(','):
+        if ':' in filter:
+            key, value = filter.split(':')
+            job_data = [job for job in job_data if job.get(key) == value]
+
+# Apply pagination
+start_index = (page - 1) * size
+end_index = start_index + size
+job_data = job_data[start_index:end_index]
+
+# Convert job data to JSON format
+results = []
+for job in job_data:
+    result = {
+        'title': job['title'],
+        'company': job['company'],
+        'location': job['location'],
+        'description_url': job['description_url'],
+        'description': job['description'],
+        'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+    }
+    if job.get('salary'):
+        result['salary'] = job['salary']
+    results.append(result)
+
+return jsonify({'results': results})
+
+Step 11-B: Test the new pagination and sorting functionality by sending requests with different parameters. For example:
+
+- `GET /jobs?query=python&location=San+Francisco&page=1&size=10&sort_by=salary_max`
+- `GET /jobs?query=javascript&location=New+York&page=2&size=20&filters=salary_max:100000,job_type:full-time`
+
+Verify that the API returns the expected results based on the specified pagination and sorting parameters.
+    try:
+        # Apply pagination
+        start_index = (page - 1) * size
+        end_index = start_index + size
+        job_data = job_data[start_index:end_index]
+
+        # Convert job data to JSON format
+        results = []
+        for job in job_data:
+            result = {
+                'title': job['title'],
+                'company': job['company'],
+                'location': job['location'],
+                'description_url': job['description_url'],
+                'description': job['description'],
+                'apply_url': 'mailto:' + job['email'] if job.get('email') else job['description_url']
+            }
+            if job.get('salary'):
+                result['salary'] = job['salary']
+            results.append(result)
+
+        return jsonify({'results': results})
+    except Exception as e:
+        print(e)
+        return jsonify({'error': 'An error occurred while processing the request.'}), 500
+    # Check if query parameter is provided
+    if not query:
+        return jsonify({'error': 'Query parameter is required.'}), 400
+
+    # Check if page and size parameters are valid integers
+    try:
+        page = int(page)
+        size = int(size)
+    except ValueError:
+        return jsonify({'error': 'Page and size parameters must be integers.'}), 400
+
+    # Check if page and size parameters are within valid ranges
+    if page <= 0 or size <= 0:
+        return jsonify({'error': 'Page and size parameters must be greater than zero.'}), 400
+pip install PyJWT
+import secrets
+
+JWT_SECRET_KEY = secrets.token_hex(16)
+    # Get the JWT from the Authorization header
+    auth_header = request.headers.get('Authorization')
+    if not auth_header:
+        return jsonify({'error': 'Authorization header is missing.'}), 401
+    auth_token = auth_header.split(' ')[1]
+
+    # Verify the JWT
+    try:
+        payload = jwt.decode(auth_token, JWT_SECRET_KEY, algorithms=['HS256'])
+        user_id = payload.get('user_id')
+        if not user_id:
+            raise jwt.InvalidTokenError
+    except jwt.ExpiredSignatureError:
+        return jsonify({'error': 'Authorization token has expired.'}), 401
+    except jwt.InvalidTokenError:
+        return jsonify({'error': 'Invalid authorization token.'}), 401
+
+    # Check if user is authorized to access the API
+    if user_id not in authorized_users:
+        return jsonify({'error': 'User is not authorized to access the API.'}), 403
+@app.route('/login', methods=['POST'])
+def login():
+    # Get credentials from request body
+    username = request.json.get('username')
+    password = request.json.get('password')
+    if not username or not password:
+        return jsonify({'error': 'Username and password are required.'}), 400
+
+    # Check if credentials are valid
+    if username not in authorized_users or password != authorized_users[username]:
+        return jsonify({'error': 'Invalid username or password.'}), 401
+
+    # Generate a JWT
+    payload = {'user_id': username}
+    auth_token = jwt.encode(payload, JWT_SECRET_KEY, algorithm='HS256')
+
+    return jsonify({'auth_token': auth_token})
